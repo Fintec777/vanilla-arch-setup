@@ -1,0 +1,10 @@
+@define-color background  {{ background }};
+@define-color foreground  {{ foreground }};
+@define-color surface0    {{ color0 }};
+@define-color surface1    {{ color8 }};
+@define-color blue        {{ accent }};
+@define-color red         {{ color1 }};
+@define-color yellow      {{ color3 }};
+@define-color green       {{ color2 }};
+@define-color lavender    {{ color5 }};
+@define-color peach       {{ color9 }};

@@ -9,7 +9,7 @@
     padding              = 12
     horizontal_padding   = 14
     frame_width          = 2
-    frame_color          = "#89b4fa"
+    frame_color          = "{{ accent }}"
     sort                 = yes
     font                 = JetBrains Mono 11
     markup               = full
@@ -37,19 +37,19 @@
     mouse_right_click    = close_all
 
 [urgency_low]
-    background  = "#1e1e2e"
-    foreground  = "#cdd6f4"
-    frame_color = "#45475a"
+    background  = "{{ background }}"
+    foreground  = "{{ foreground }}"
+    frame_color = "{{ color0 }}"
     timeout     = 4
 
 [urgency_normal]
-    background  = "#1e1e2e"
-    foreground  = "#cdd6f4"
-    frame_color = "#89b4fa"
+    background  = "{{ background }}"
+    foreground  = "{{ foreground }}"
+    frame_color = "{{ accent }}"
     timeout     = 8
 
 [urgency_critical]
-    background  = "#1e1e2e"
-    foreground  = "#f38ba8"
-    frame_color = "#f38ba8"
+    background  = "{{ background }}"
+    foreground  = "{{ color1 }}"
+    frame_color = "{{ color1 }}"
     timeout     = 0

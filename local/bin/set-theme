@@ -1,0 +1,115 @@
+#!/bin/bash
+# set-theme <theme-name>
+# Applies a theme to: waybar, kitty, hyprland, hyprlock, dunst, neovim, chromium
+
+THEME="${1:-}"
+THEMES_DIR="$HOME/.config/themes"
+TEMPLATES_DIR="$THEMES_DIR/templates"
+
+if [[ -z "$THEME" ]]; then
+    echo "Usage: set-theme <theme-name>"
+    echo ""
+    echo "Available themes:"
+    ls "$THEMES_DIR" | grep -v templates | grep -v current.name | sed 's/^/  /'
+    exit 1
+fi
+
+COLORS_FILE="$THEMES_DIR/$THEME/colors.toml"
+
+if [[ ! -d "$THEMES_DIR/$THEME" ]]; then
+    echo "Theme '$THEME' not found in $THEMES_DIR"
+    exit 1
+fi
+
+if [[ ! -f "$COLORS_FILE" ]]; then
+    echo "Missing colors.toml for theme '$THEME'"
+    exit 1
+fi
+
+echo "Applying theme: $THEME"
+
+# ── Build sed substitution script from colors.toml ───────────────────────────
+sed_script=$(mktemp)
+
+hex_to_rgb() {
+    local hex="${1#\#}"
+    printf "%d,%d,%d" "0x${hex:0:2}" "0x${hex:2:2}" "0x${hex:4:2}"
+}
+
+while IFS='=' read -r key value; do
+    key="${key//[\"\' ]/}"
+    [[ $key && $key != \#* ]] || continue
+    value="${value#*[\"\']}"
+    value="${value%%[\"\']*}"
+
+    printf 's|{{ %s }}|%s|g\n'       "$key" "$value"          >> "$sed_script"
+    printf 's|{{ %s_strip }}|%s|g\n' "$key" "${value#\#}"     >> "$sed_script"
+
+    if [[ $value =~ ^# ]]; then
+        rgb=$(hex_to_rgb "$value")
+        printf 's|{{ %s_rgb }}|%s|g\n' "$key" "$rgb"          >> "$sed_script"
+    fi
+done < "$COLORS_FILE"
+
+render() {
+    local tpl="$1" out="$2"
+    sed -f "$sed_script" "$tpl" > "$out"
+}
+
+# ── Render templates ──────────────────────────────────────────────────────────
+render "$TEMPLATES_DIR/waybar.css.tpl"      "$HOME/.config/waybar/theme.css"
+render "$TEMPLATES_DIR/kitty.conf.tpl"      "$HOME/.config/kitty/theme.conf"
+render "$TEMPLATES_DIR/hyprland.conf.tpl"   "$HOME/.config/hypr/theme.conf"
+render "$TEMPLATES_DIR/hyprlock.conf.tpl"   "$HOME/.config/hypr/hyprlock-theme.conf"
+render "$TEMPLATES_DIR/dunstrc.tpl"         "$HOME/.config/dunst/dunstrc"
+
+rm -f "$sed_script"
+
+# ── Neovim theme ─────────────────────────────────────────────────────────────
+if [[ -f "$THEMES_DIR/$THEME/neovim.lua" ]]; then
+    cp "$THEMES_DIR/$THEME/neovim.lua" "$HOME/.local/share/nvim/theme.lua"
+    # Hot-reload all running nvim instances
+    for socket in /run/user/$(id -u)/nvim-*.sock; do
+        [[ -S "$socket" ]] || continue
+        nvim --server "$socket" \
+             --remote-send "<Esc>:luafile $HOME/.config/nvim/lua/reload-theme.lua<CR>" \
+             2>/dev/null || true
+    done
+fi
+
+# ── GTK light/dark mode ───────────────────────────────────────────────────────
+if [[ -f "$THEMES_DIR/$THEME/light.mode" ]]; then
+    sed -i 's/gtk-application-prefer-dark-theme = true/gtk-application-prefer-dark-theme = false/' \
+        "$HOME/.config/gtk-3.0/settings.ini" "$HOME/.config/gtk-4.0/settings.ini" 2>/dev/null || true
+    gsettings set org.gnome.desktop.interface color-scheme 'prefer-light' 2>/dev/null || true
+else
+    sed -i 's/gtk-application-prefer-dark-theme = false/gtk-application-prefer-dark-theme = true/' \
+        "$HOME/.config/gtk-3.0/settings.ini" "$HOME/.config/gtk-4.0/settings.ini" 2>/dev/null || true
+    gsettings set org.gnome.desktop.interface color-scheme 'prefer-dark' 2>/dev/null || true
+fi
+
+# ── Chromium toolbar colour ───────────────────────────────────────────────────
+BG_HEX=$(grep '^background' "$COLORS_FILE" | sed "s/.*= *[\"']\([^\"']*\)[\"'].*/\1/")
+sudo /usr/local/bin/chromium-set-theme "$BG_HEX" 2>/dev/null || true
+
+# ── Current theme pointer ─────────────────────────────────────────────────────
+echo "$THEME" > "$THEMES_DIR/current.name"
+ln -sfn "$THEMES_DIR/$THEME" "$THEMES_DIR/current"
+
+# ── Reload running apps ───────────────────────────────────────────────────────
+# Waybar — SIGUSR2 triggers style reload
+pgrep -x waybar > /dev/null && pkill -SIGUSR2 waybar || true
+
+# Dunst — restart to pick up new dunstrc
+if pgrep -x dunst > /dev/null; then
+    pkill dunst
+    sleep 0.3
+    dunst &
+fi
+
+# Hyprland — reload config (picks up new theme.conf via source=)
+if [[ "$XDG_CURRENT_DESKTOP" == "Hyprland" ]]; then
+    hyprctl reload 2>/dev/null || true
+fi
+
+echo "Done. Theme applied: $THEME"
